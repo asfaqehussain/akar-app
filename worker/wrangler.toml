@@ -1,0 +1,17 @@
+name = "field-proof-worker"
+main = "src/index.ts"
+compatibility_date = "2024-05-29"
+
+# Bind an R2 Bucket to store proof images
+[[r2_buckets]]
+binding = "PROOFS_R2"
+bucket_name = "field-proofs"
+
+[vars]
+# Configure Firebase variables (can also be set as secrets using `wrangler secret put`)
+FIREBASE_PROJECT_ID = "YOUR_FIREBASE_PROJECT_ID"
+# Firebase Web API Key for anonymous authentication or REST API writes
+FIREBASE_API_KEY = "YOUR_FIREBASE_API_KEY"
+
+# NOTE: For production, store private keys/sensitive service accounts as secrets:
+# wrangler secret put FIREBASE_SERVICE_ACCOUNT
