@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.akar.web"
+  },
+  "ios": {
+    "bundleIdentifier": "com.akar.web"
+  }
+}

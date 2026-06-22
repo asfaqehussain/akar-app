@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "485885762789",
+    "project_id": "akar-4660c",
+    "storage_bucket": "akar-4660c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485885762789:android:43c165b7cd26ac01d6880c",
+        "android_client_info": {
+          "package_name": "com.akarapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_tDz8vC1tt1m_ZfHdyaLigNtHCgUbyLA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
