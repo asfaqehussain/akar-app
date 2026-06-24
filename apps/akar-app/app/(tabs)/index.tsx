@@ -13,12 +13,17 @@ import {
 import { Camera, useCameraDevice, useCameraPermission, usePhotoOutput, CameraRef } from 'react-native-vision-camera';
 import * as Sharing from 'expo-sharing';
 import { useLocation } from '@/hooks/use-location';
-import { burnWatermark } from '@/utils/watermark';
 import { checkDeviceSecurity, computeSHA256, arrayBufferToHex } from '@/utils/security';
 import { uploadProof, DEFAULT_BACKEND_URL } from '@/services/upload';
 import { loadImage } from 'react-native-nitro-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import ViewShot from 'react-native-view-shot';
+import LeafletMapCapture from '@/src/components/LeafletMapCapture';
+import WatermarkOverlay from '@/src/components/WatermarkOverlay';
+import { encodePlusCode } from '@/src/utils/plusCode';
+import * as Location from 'expo-location';
+import { formatTimestamp } from '@/src/utils/formatTimestamp';
 
 export default function CameraScreen() {
   const cameraRef = useRef<CameraRef>(null);
@@ -44,6 +49,12 @@ export default function CameraScreen() {
     path: string;
     hash: string;
   } | null>(null);
+
+  // ViewShot and mapping state
+  const viewShotRef = useRef<ViewShot>(null);
+  const [mapBase64, setMapBase64] = useState<string | null>(null);
+  const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
+  const [watermarkData, setWatermarkData] = useState<any>(null);
 
   // Real-time security telemetry
   const [securityData, setSecurityData] = useState<{
@@ -107,16 +118,54 @@ export default function CameraScreen() {
       const proofId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const timestamp = new Date().toISOString();
 
-      // Step 3: Burn Watermark
+      // Step 3: Burn Watermark using ViewShot
       setPipelineStep('Embedding encrypted watermark...');
-      const watermarkedPath = await burnWatermark(photoFile.filePath, {
-        proofId,
-        timestamp,
-        latitude: gps.latitude,
-        longitude: gps.longitude,
-        accuracy: gps.accuracy,
-        isMocked: gps.mocked,
+      
+      // Reverse geocode
+      let placeName = `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`;
+      let fullAddress = '';
+      try {
+        const geocode = await Location.reverseGeocodeAsync({
+          latitude: gps.latitude,
+          longitude: gps.longitude,
+        });
+        if (geocode && geocode.length > 0) {
+          const geo = geocode[0];
+          const city = geo.city || geo.subregion || '';
+          const region = geo.region || '';
+          const country = geo.country || '';
+          placeName = [city, region, country].filter(Boolean).join(', ');
+          const postalCode = geo.postalCode || '';
+          fullAddress = [city, `${region} ${postalCode}`.trim(), country].filter(Boolean).join(', ');
+        }
+      } catch (geoError) {
+        console.warn('Reverse geocoding failed:', geoError);
+      }
+      
+      const plusCodePreview = encodePlusCode(gps.latitude, gps.longitude);
+      
+      setWatermarkData({
+         placeName,
+         fullAddress: fullAddress ? `${plusCodePreview}, ${fullAddress}` : plusCodePreview,
+         plusCode: plusCodePreview,
+         latitude: gps.latitude,
+         longitude: gps.longitude,
+         timestamp: formatTimestamp(new Date()),
       });
+      setCapturedPhotoUri(`file://${photoFile.filePath}`);
+      
+      // Wait a moment for React to mount the WatermarkOverlay and lay it out
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      if (!viewShotRef.current?.capture) {
+        throw new Error('ViewShot ref is not ready');
+      }
+
+      // Capture the composite WatermarkOverlay View as a screenshot
+      const watermarkedPath = await viewShotRef.current.capture();
+      
+      // Reset state so it unmounts
+      setCapturedPhotoUri(null);
 
       // Step 4: Nitro Compression & Resizing
       setPipelineStep('Compressing & optimizing proof image...');
@@ -253,6 +302,35 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Off-screen Map Renderer */}
+      {location && (
+        <View style={styles.hiddenRenderer}>
+          <LeafletMapCapture
+            latitude={location.latitude}
+            longitude={location.longitude}
+            onMapCaptured={setMapBase64}
+          />
+        </View>
+      )}
+
+      {/* Off-screen ViewShot Composite Renderer */}
+      {capturedPhotoUri && watermarkData && (
+        <View style={styles.hiddenRendererViewShot}>
+          <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.95 }}>
+            <WatermarkOverlay
+              photoUri={capturedPhotoUri}
+              mapBase64={mapBase64}
+              placeName={watermarkData.placeName}
+              fullAddress={watermarkData.fullAddress}
+              plusCode={watermarkData.plusCode}
+              latitude={watermarkData.latitude}
+              longitude={watermarkData.longitude}
+              timestamp={watermarkData.timestamp}
+            />
+          </ViewShot>
+        </View>
+      )}
+
       {/* Camera Viewfinder */}
       <Camera
         ref={cameraRef}
@@ -367,6 +445,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#0F172A',
+  },
+  // Hidden renderers for watermarking
+  hiddenRenderer: {
+    position: 'absolute',
+    top: -5000,
+    left: -5000,
+  },
+  hiddenRendererViewShot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    opacity: 0,
+    pointerEvents: 'none',
+    zIndex: -1,
   },
   permissionBox: {
     width: '85%',

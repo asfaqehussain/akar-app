@@ -1,23 +1,25 @@
 import { NavigationProp, useIsFocused, useNavigation } from '@react-navigation/native';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import ImageMarker, { ImageFormat, Position, TextBackgroundType } from 'react-native-image-marker';
-import { loadImage } from 'react-native-nitro-image';
+import ViewShot from 'react-native-view-shot';
 import { Camera, CameraRef, useCameraDevice, useCameraPermission, usePhotoOutput } from 'react-native-vision-camera';
+import { loadImage } from 'react-native-nitro-image';
+import * as Location from 'expo-location';
 import { computeSHA256 } from '../../utils/security';
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { generateWatermarkText } from '../utils/generateWatermarkText';
+import { encodePlusCode } from '../utils/plusCode';
+import LeafletMapCapture from '../components/LeafletMapCapture';
+import WatermarkOverlay from '../components/WatermarkOverlay';
 
 export default function CameraScreen() {
   const cameraRef = useRef<CameraRef>(null);
@@ -30,6 +32,51 @@ export default function CameraScreen() {
   const photoOutput = usePhotoOutput();
 
   const [isCapturing, setIsCapturing] = useState(false);
+
+  // ViewShot and mapping state
+  const viewShotRef = useRef<ViewShot>(null);
+  const [mapBase64, setMapBase64] = useState<string | null>(null);
+  const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
+
+  // Live watermark popup state
+  const [reverseGeoPlace, setReverseGeoPlace] = useState<string>('');
+  const [reverseGeoAddress, setReverseGeoAddress] = useState<string>('');
+  const [plusCodePreview, setPlusCodePreview] = useState<string>('');
+  const [liveTimestamp, setLiveTimestamp] = useState<string>(formatTimestamp(new Date()));
+
+  // Reverse geocode when location changes
+  useEffect(() => {
+    if (!location) return;
+    setPlusCodePreview(encodePlusCode(location.latitude, location.longitude));
+
+    (async () => {
+      try {
+        const geocode = await Location.reverseGeocodeAsync({
+          latitude: location.latitude,
+          longitude: location.longitude,
+        });
+        if (geocode && geocode.length > 0) {
+          const geo = geocode[0];
+          const city = geo.city || geo.subregion || '';
+          const region = geo.region || '';
+          const country = geo.country || '';
+          setReverseGeoPlace([city, region, country].filter(Boolean).join(', '));
+          const postalCode = geo.postalCode || '';
+          setReverseGeoAddress([city, `${region} ${postalCode}`.trim(), country].filter(Boolean).join(', '));
+        }
+      } catch (err) {
+        console.warn('Reverse geocoding failed:', err);
+      }
+    })();
+  }, [location]);
+
+  // Update live timestamp every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLiveTimestamp(formatTimestamp(new Date()));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleCapture = async () => {
     if (!cameraRef.current) {
@@ -52,54 +99,23 @@ export default function CameraScreen() {
 
       const rawPhotoUri = `file://${photoFile.filePath}`;
 
-      // 2. Generate current timestamp
-      const timestampText = formatTimestamp(new Date());
+      // 2. Pass raw photo to state so WatermarkOverlay renders it
+      setCapturedPhotoUri(rawPhotoUri);
 
-      // 3. Build watermark text
-      const watermarkText = generateWatermarkText(
-        timestampText,
-        location.latitude,
-        location.longitude,
-        location.accuracy
-      );
+      // Wait a moment for React to mount the WatermarkOverlay and lay it out
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-      // 4. Use react-native-image-marker to write the watermark permanently
-      const markedImagePath = await ImageMarker.markText({
-        backgroundImage: {
-          src: rawPhotoUri,
-          scale: 1.0,
-        },
-        watermarkTexts: [
-          {
-            text: watermarkText,
-            position: {
-              position: Position.bottomRight,
-            },
-            style: {
-              color: '#FFFFFF',
-              fontSize: 100,
-              fontName: 'Arial',
-              bold: true,
-              shadowStyle: {
-                dx: 2,
-                dy: 2,
-                radius: 3,
-                color: '#000000',
-              },
-              textBackgroundStyle: {
-                type: TextBackgroundType.none,
-                color: '#00000080', // 50% opaque black
-                paddingX: 16,
-                paddingY: 16,
-              },
-            },
-          },
-        ],
-        quality: 95,
-        saveFormat: ImageFormat.jpg,
-      });
+      if (!viewShotRef.current?.capture) {
+        throw new Error('ViewShot ref is not ready');
+      }
 
-      // 5. Generate metadata parameters and calculate checksum
+      // 3. Capture the composite WatermarkOverlay View as a screenshot
+      const markedImagePath = await viewShotRef.current.capture();
+
+      // Reset state so it unmounts
+      setCapturedPhotoUri(null);
+
+      // 8. Generate metadata parameters and calculate checksum
       const proofId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const capturedAt = new Date().toISOString();
 
@@ -109,7 +125,7 @@ export default function CameraScreen() {
 
       setIsCapturing(false);
 
-      // 6. Navigate to Preview screen with flat parameters structure
+      // 9. Navigate to Preview screen with flat parameters structure
       navigation.navigate('Preview', {
         imagePath: markedImagePath,
         proofId,
@@ -152,9 +168,37 @@ export default function CameraScreen() {
     );
   }
 
-  // 2. Camera Viewfinder Screen
   return (
     <View style={styles.container}>
+      {/* Off-screen Map Renderer */}
+      {location && (
+        <View style={styles.hiddenRenderer}>
+          <LeafletMapCapture
+            latitude={location.latitude}
+            longitude={location.longitude}
+            onMapCaptured={setMapBase64}
+          />
+        </View>
+      )}
+
+      {/* Off-screen ViewShot Composite Renderer */}
+      {capturedPhotoUri && location && (
+        <View style={styles.hiddenRendererViewShot}>
+          <ViewShot ref={viewShotRef} options={{ format: 'jpg', quality: 0.95 }}>
+            <WatermarkOverlay
+              photoUri={capturedPhotoUri}
+              mapBase64={mapBase64}
+              placeName={reverseGeoPlace || `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`}
+              fullAddress={reverseGeoAddress ? `${plusCodePreview}, ${reverseGeoAddress}` : plusCodePreview}
+              plusCode={plusCodePreview}
+              latitude={location.latitude}
+              longitude={location.longitude}
+              timestamp={liveTimestamp}
+            />
+          </ViewShot>
+        </View>
+      )}
+
       <Camera
         ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
@@ -163,33 +207,44 @@ export default function CameraScreen() {
         isActive={isFocused}
       />
 
-      {/* Floating HUD - GPS telemetry */}
-      <SafeAreaView style={styles.hudContainer}>
-        <View style={styles.hudCard}>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, location ? styles.dotReady : styles.dotWaiting]} />
-            <Text style={styles.statusLabel}>
-              {location ? 'GPS Ready' : locationLoading ? 'Acquiring GPS Fix...' : 'GPS Offline'}
-            </Text>
-          </View>
+      {/* Bottom watermark preview popup */}
+      <View style={styles.watermarkPopup}>
+        <View style={styles.watermarkCard}>
           {location ? (
-            <View style={styles.gpsDetails}>
-              <Text style={styles.gpsText}>Lat: {location.latitude.toFixed(6)}</Text>
-              <Text style={styles.gpsText}>Lng: {location.longitude.toFixed(6)}</Text>
-              <Text style={styles.gpsText}>Accuracy: {Math.round(location.accuracy)}m</Text>
-            </View>
+            <>
+              <Text style={styles.watermarkPlaceName}>
+                {reverseGeoPlace || `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`}
+              </Text>
+              <Text style={styles.watermarkAddress}>
+                {reverseGeoAddress
+                  ? `${plusCodePreview}, ${reverseGeoAddress}`
+                  : plusCodePreview}
+              </Text>
+              <Text style={styles.watermarkCoords}>
+                Lat {location.latitude.toFixed(6)}° Long {location.longitude.toFixed(6)}°
+              </Text>
+              <Text style={styles.watermarkTimestamp}>
+                {liveTimestamp}
+              </Text>
+            </>
           ) : (
             <View style={styles.gpsOfflineContainer}>
-              <Text style={styles.gpsOfflineText}>
-                {locationError ? `Error: ${locationError}` : 'Waiting for GPS location data...'}
-              </Text>
+              <View style={styles.statusRow}>
+                <View style={[styles.statusDot, styles.dotWaiting]} />
+                <Text style={styles.watermarkTimestamp}>
+                  {locationLoading ? 'Acquiring GPS Fix...' : 'GPS Offline'}
+                </Text>
+              </View>
+              {locationError && (
+                <Text style={styles.watermarkCoords}>{locationError}</Text>
+              )}
               <TouchableOpacity style={styles.retryGpsButton} onPress={refetchLocation}>
-                <Text style={styles.retryGpsText}>Force Refresh GPS</Text>
+                <Text style={styles.retryGpsText}>Refresh GPS</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
-      </SafeAreaView>
+      </View>
 
       {/* Shutter controls */}
       <View style={styles.shutterContainer}>
@@ -273,86 +328,100 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
-  hudContainer: {
+  // Hidden renderers for watermarking
+  hiddenRenderer: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 20 : 30,
-    left: 16,
-    right: 16,
+    top: -5000, // Move way off screen
+    left: -5000,
   },
-  hudCard: {
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderRadius: 18,
+  hiddenRendererViewShot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    opacity: 0,
+    pointerEvents: 'none', // Prevent interaction but allow view-shot to capture
+    zIndex: -1,
+  },
+  // Bottom watermark popup
+  watermarkPopup: {
+    position: 'absolute',
+    bottom: 140,
+    left: 12,
+    right: 12,
+  },
+  watermarkCard: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
+  watermarkPlaceName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  watermarkAddress: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#CBD5E1',
+    marginBottom: 3,
+  },
+  watermarkCoords: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CBD5E1',
+    marginBottom: 3,
+  },
+  watermarkTimestamp: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CBD5E1',
+  },
+  // GPS offline state
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginRight: 8,
-  },
-  dotReady: {
-    backgroundColor: '#10B981',
   },
   dotWaiting: {
     backgroundColor: '#FBBF24',
   },
-  statusLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#F8FAFC',
-  },
-  gpsDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  gpsText: {
-    color: '#E2E8F0',
-    fontSize: 12,
-    fontWeight: '500',
-  },
   gpsOfflineContainer: {
     alignItems: 'flex-start',
   },
-  gpsOfflineText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 8,
-  },
   retryGpsButton: {
-    backgroundColor: '#334155',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     borderRadius: 8,
+    marginTop: 6,
   },
   retryGpsText: {
     color: '#F8FAFC',
     fontSize: 11,
     fontWeight: '600',
   },
+  // Shutter
   shutterContainer: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 44,
     left: 0,
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shutterButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     borderWidth: 5,
     borderColor: '#FFFFFF',
     backgroundColor: 'transparent',
@@ -363,12 +432,13 @@ const styles = StyleSheet.create({
     borderColor: '#64748B',
   },
   shutterInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#FFFFFF',
   },
   shutterInnerDisabled: {
     backgroundColor: '#64748B',
   },
 });
+
