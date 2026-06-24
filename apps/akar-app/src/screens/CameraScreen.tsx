@@ -1,30 +1,30 @@
+import { NavigationProp, useIsFocused, useNavigation } from '@react-navigation/native';
 import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  SafeAreaView,
   StyleSheet,
-  View,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
-  SafeAreaView,
-  Platform,
-  Alert,
+  View,
 } from 'react-native';
-import { Camera, useCameraDevice, useCameraPermission, usePhotoOutput, CameraRef } from 'react-native-vision-camera';
-import { useIsFocused, useNavigation, NavigationProp } from '@react-navigation/native';
-import ImageMarker, { Position, TextBackgroundType, ImageFormat } from 'react-native-image-marker';
+import ImageMarker, { ImageFormat, Position, TextBackgroundType } from 'react-native-image-marker';
 import { loadImage } from 'react-native-nitro-image';
+import { Camera, CameraRef, useCameraDevice, useCameraPermission, usePhotoOutput } from 'react-native-vision-camera';
+import { computeSHA256 } from '../../utils/security';
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
+import { RootStackParamList } from '../navigation/RootNavigator';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { generateWatermarkText } from '../utils/generateWatermarkText';
-import { RootStackParamList } from '../navigation/RootNavigator';
-import { computeSHA256 } from '../../utils/security';
 
 export default function CameraScreen() {
   const cameraRef = useRef<CameraRef>(null);
   const device = useCameraDevice('back');
   const isFocused = useIsFocused();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  
+
   const { hasPermission: hasCameraPermission, requestPermission: requestCameraPermission } = useCameraPermission();
   const { location, loading: locationLoading, errorMsg: locationError, refetchLocation } = useCurrentLocation();
   const photoOutput = usePhotoOutput();
@@ -77,7 +77,7 @@ export default function CameraScreen() {
             },
             style: {
               color: '#FFFFFF',
-              fontSize: 34,
+              fontSize: 100,
               fontName: 'Arial',
               bold: true,
               shadowStyle: {

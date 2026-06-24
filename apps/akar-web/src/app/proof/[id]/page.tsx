@@ -54,7 +54,7 @@ export default function ProofDetailPage({ params }: PageProps) {
             <ShieldAlert className="w-10 h-10 text-amber-500 mb-4" />
             <h3 className="text-base font-bold text-slate-200">Record Not Found</h3>
             <p className="text-xs text-slate-500 mt-2 max-w-sm">
-              The verification proof ID you requested could not be found in Firestore.
+              The verification proof ID you requested could not be found in Supabase.
             </p>
           </div>
         )}
@@ -107,7 +107,7 @@ export default function ProofDetailPage({ params }: PageProps) {
                     {proof.proofId}
                   </h3>
                   <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mt-1">
-                    Document registered in Firestore
+                    Document registered in Supabase
                   </p>
                 </div>
 

@@ -1,15 +1,14 @@
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firestore/firebase';
+import { supabase } from '../supabase/supabaseClient';
 
 export const uploadService = {
   /**
-   * Uploads the watermarked image to Firebase Storage.
+   * Uploads the watermarked image to Supabase Storage.
    * 
    * @param imageUri Local path of the marked image
    * @param proofId Unique proof identifier
-   * @returns Reference URL and key
+   * @returns Public URL and storage path
    */
-  async uploadProof(imageUri: string, proofId: string): Promise<{ imageUrl: string; r2Key: string }> {
+  async uploadProof(imageUri: string, proofId: string): Promise<{ imageUrl: string; storagePath: string }> {
     try {
       if (!imageUri) {
         throw new Error('Image URI is required for upload');
@@ -18,19 +17,35 @@ export const uploadService = {
         throw new Error('Proof ID is required for upload');
       }
 
-      // Fetch the local file URI to get a Blob for Firebase SDK upload
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      // Ensure the URI has a file:// scheme for fetch()
+      const normalizedUri = imageUri.startsWith('file://') ? imageUri : `file://${imageUri}`;
 
-      const r2Key = `proofs/${proofId}.jpg`;
-      const storageRef = ref(storage, r2Key);
+      // Read the file as ArrayBuffer (more reliable than Blob in React Native)
+      const response = await fetch(normalizedUri);
+      const arrayBuffer = await response.arrayBuffer();
 
-      await uploadBytes(storageRef, blob);
-      const imageUrl = await getDownloadURL(storageRef);
+      const storagePath = `proofs/${proofId}.jpg`;
 
-      return { imageUrl, r2Key };
+      const { error: uploadError } = await supabase.storage
+        .from('proofs')
+        .upload(storagePath, arrayBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('proofs')
+        .getPublicUrl(storagePath);
+
+      const imageUrl = publicUrlData.publicUrl;
+
+      return { imageUrl, storagePath };
     } catch (error: any) {
-      console.error('Firebase Storage upload failed:', error);
+      console.error('Supabase Storage upload failed:', error);
       throw new Error(`Upload failed: ${error?.message || error}`);
     }
   }
