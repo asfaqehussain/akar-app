@@ -1,4 +1,4 @@
-import ImageMarker, { Position, ImageFormat } from 'react-native-image-marker';
+import ImageMarker, { ImageFormat } from 'react-native-image-marker';
 
 interface WatermarkMetadata {
   proofId: string;
@@ -48,7 +48,7 @@ export async function burnWatermark(
       },
       style: {
         color: '#FFFFFF',
-        fontSize: 32,
+        fontSize: 100,
         bold: true,
         fontName: 'Helvetica-Bold',
         shadowStyle: {
@@ -63,7 +63,7 @@ export async function burnWatermark(
 
   try {
     const formattedPath = imagePath.startsWith('file://') ? imagePath : `file://${imagePath}`;
-    
+
     const markedImagePath = await ImageMarker.markText({
       backgroundImage: {
         src: formattedPath,

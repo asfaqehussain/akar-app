@@ -8,6 +8,7 @@ export default function ProofTable() {
   const { data: proofs, isLoading, error } = useProofs();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeModalImage, setActiveModalImage] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   if (isLoading) {
     return (
@@ -24,7 +25,7 @@ export default function ProofTable() {
         <ShieldAlert className="w-8 h-8 text-red-400 mb-3" />
         <h4 className="text-sm font-bold text-red-200">Failed to load proofs</h4>
         <p className="text-xs text-slate-400 mt-1.5 max-w-sm">
-          {error.message || 'An unexpected error occurred while communicating with Firestore.'}
+          {error.message || 'An unexpected error occurred while communicating with Supabase.'}
         </p>
       </div>
     );
@@ -44,7 +45,6 @@ export default function ProofTable() {
     );
   }
 
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Filter proofs by Proof ID locally on the client
   const filteredProofs = proofs.filter((proof) =>

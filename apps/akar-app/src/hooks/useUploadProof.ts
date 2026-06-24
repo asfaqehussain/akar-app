@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system/next';
 import DeviceInfo from 'react-native-device-info';
 import { uploadService } from '../services/upload/uploadService';
-import { proofService } from '../services/firestore/proofService';
+import { proofService } from '../services/supabase/proofService';
 import { shareService } from '../services/share/shareService';
 import { Proof } from '../types/proof';
 
@@ -31,11 +31,11 @@ export const useUploadProof = () => {
     setIsUploading(true);
     setError(null);
     try {
-      // 1. Upload watermarked image to Firebase Storage
+      // 1. Upload watermarked image to Supabase Storage
       setProgress('Uploading...');
-      const { imageUrl, r2Key } = await uploadService.uploadProof(params.imagePath, params.proofId);
+      const { imageUrl, storagePath } = await uploadService.uploadProof(params.imagePath, params.proofId);
 
-      // 2. Register metadata in Firestore
+      // 2. Register metadata in Supabase
       setProgress('Saving metadata...');
       const deviceId = await DeviceInfo.getUniqueId();
       const brand = DeviceInfo.getBrand();
@@ -46,7 +46,7 @@ export const useUploadProof = () => {
       const proofDoc: Proof = {
         proofId: params.proofId,
         imageUrl,
-        r2Key,
+        storagePath,
         capturedAt: params.capturedAt,
         uploadedAt: new Date().toISOString(),
         latitude: params.latitude,
@@ -66,9 +66,12 @@ export const useUploadProof = () => {
       const message = `Proof ID: ${params.proofId}\n\nCaptured At:\n${params.capturedAt}\n\nLocation:\n${params.latitude},${params.longitude}`;
       await shareService.shareToWhatsApp(params.imagePath, message);
 
-      // 4. Delete the temporary file
+      // 4. Delete the temporary file using new expo-file-system API
       try {
-        await FileSystem.deleteAsync(params.imagePath, { idempotent: true });
+        const tempFile = new File(params.imagePath);
+        if (tempFile.exists) {
+          tempFile.delete();
+        }
       } catch (fileError) {
         console.warn('Failed to delete temporary local file:', fileError);
       }

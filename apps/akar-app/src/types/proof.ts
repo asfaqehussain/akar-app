@@ -1,7 +1,7 @@
 export interface Proof {
   proofId: string;
   imageUrl: string;
-  r2Key: string;
+  storagePath: string;
   capturedAt: string;
   uploadedAt: string;
   latitude: number;

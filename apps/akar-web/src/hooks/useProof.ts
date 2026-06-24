@@ -3,7 +3,7 @@ import { proofService } from '../services/proofService';
 import { Proof } from '../types/proof';
 
 /**
- * React Query hook to fetch and cache a single proof document's details by ID.
+ * React Query hook to fetch and cache a single proof's details by ID from Supabase.
  * 
  * @param proofId Unique proof document identifier
  */
