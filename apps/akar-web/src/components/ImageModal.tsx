@@ -40,7 +40,7 @@ export default function ImageModal({ imageUrl, onClose }: ImageModalProps) {
   if (!imageUrl) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm transition-opacity duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/90 dark:bg-slate-950/90 backdrop-blur-sm transition-opacity duration-300">
       
       {/* Clickable backdrop overlay to close */}
       <div className="absolute inset-0" onClick={onClose} />
@@ -48,7 +48,7 @@ export default function ImageModal({ imageUrl, onClose }: ImageModalProps) {
       {/* Close button */}
       <button 
         onClick={onClose}
-        className="absolute top-4 right-4 z-55 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+        className="absolute top-4 right-4 z-55 p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors"
       >
         <X className="w-6 h-6" />
       </button>
@@ -56,7 +56,7 @@ export default function ImageModal({ imageUrl, onClose }: ImageModalProps) {
       {/* Download button */}
       <button
         onClick={handleDownload}
-        className="absolute top-4 right-16 z-55 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+        className="absolute top-4 right-16 z-55 p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors"
       >
         <Download className="w-6 h-6" />
       </button>
@@ -66,7 +66,7 @@ export default function ImageModal({ imageUrl, onClose }: ImageModalProps) {
         <img 
           src={imageUrl} 
           alt="Full Size Verification Proof" 
-          className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-slate-800 shadow-2xl select-none pointer-events-none"
+          className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl select-none pointer-events-none"
         />
       </div>
 

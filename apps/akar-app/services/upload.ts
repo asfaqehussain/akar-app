@@ -10,9 +10,11 @@ export interface ProofMetadata {
   longitude: number;
   altitude: number | null;
   accuracy: number | null;
+  accuracyTier: 'good' | 'warning' | 'poor';
   mocked: boolean;
   imageHash: string;
   isRooted: boolean;
+  duplicateProof: boolean;
   deviceName: string;
   deviceModel: string;
   osVersion: string;

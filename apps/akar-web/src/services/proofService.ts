@@ -10,11 +10,14 @@ interface SupabaseProofRow {
   latitude: number;
   longitude: number;
   accuracy: number;
+  accuracy_tier: string;
   hash: string;
   device_id: string;
   device_model: string;
   app_version: string;
   mock_location: boolean;
+  is_rooted: boolean;
+  duplicate_proof: boolean;
   city: string;
   state: string;
   country: string;
@@ -34,11 +37,14 @@ function mapRowToProof(row: SupabaseProofRow): Proof {
     latitude: Number(row.latitude) || 0,
     longitude: Number(row.longitude) || 0,
     accuracy: Number(row.accuracy) || 0,
+    accuracyTier: (row.accuracy_tier as 'good' | 'warning' | 'poor') || 'good',
     hash: row.hash || '',
     deviceId: row.device_id || '',
     deviceModel: row.device_model || '',
     appVersion: row.app_version || '',
     mockLocation: !!row.mock_location,
+    isRooted: !!row.is_rooted,
+    duplicateProof: !!row.duplicate_proof,
     city: row.city || '',
     state: row.state || '',
     country: row.country || '',

@@ -7,11 +7,14 @@ export interface Proof {
   latitude: number;
   longitude: number;
   accuracy: number;
+  accuracyTier: 'good' | 'warning' | 'poor';
   hash: string;
   deviceId: string;
   deviceModel: string;
   appVersion: string;
   mockLocation: boolean;
+  isRooted: boolean;
+  duplicateProof: boolean;
   city: string;
   state: string;
   country: string;

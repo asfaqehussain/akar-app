@@ -18,6 +18,8 @@ interface WatermarkOverlayProps {
   longitude: number;
   /** Pre-formatted timestamp string */
   timestamp: string;
+  /** Actual aspect ratio of the captured photo (width/height) */
+  aspectRatio?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -42,13 +44,14 @@ const WatermarkOverlay = forwardRef<View, WatermarkOverlayProps>(
       latitude,
       longitude,
       timestamp,
+      aspectRatio = 3 / 4,
     },
     ref,
   ) => {
     const normalizedUri = photoUri.startsWith('file://') ? photoUri : `file://${photoUri}`;
 
     return (
-      <View ref={ref} style={styles.captureContainer} collapsable={false}>
+      <View ref={ref} style={[styles.captureContainer, { aspectRatio }]} collapsable={false}>
         {/* Full photo background */}
         <Image
           source={{ uri: normalizedUri }}
@@ -105,7 +108,7 @@ export default WatermarkOverlay;
 const styles = StyleSheet.create({
   captureContainer: {
     width: SCREEN_WIDTH,
-    aspectRatio: 3 / 4, // Typical photo aspect ratio
+    // aspectRatio is now set dynamically in the style array
     backgroundColor: '#000',
     position: 'relative',
   },

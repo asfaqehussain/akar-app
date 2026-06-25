@@ -27,6 +27,7 @@ import { formatTimestamp } from '@/src/utils/formatTimestamp';
 import { useRouter } from 'expo-router';
 import { useUploadStore } from '@/src/store/useUploadStore';
 import { processUploadQueue } from '@/src/services/uploadQueue';
+import { classifyAccuracy, checkSameLocationBlock, checkDuplicateCoordinates, AccuracyTier } from '@/src/utils/proofValidation';
 
 export default function CameraScreen() {
   const cameraRef = useRef<CameraRef>(null);
@@ -98,7 +99,31 @@ export default function CameraScreen() {
         throw new Error('Failed to acquire location. Ensure location services are enabled.');
       }
 
-      // Step 2: Capture Photo
+      // Step 2: GPS Accuracy Validation (Rule 5)
+      const accuracyTier = classifyAccuracy(gps.accuracy);
+      if (accuracyTier === 'poor') {
+        Alert.alert(
+          'Low GPS Accuracy',
+          `Current GPS accuracy is ±${gps.accuracy?.toFixed(0) || '?'}m (>50m). The proof will be flagged as low accuracy. Consider moving to an open area for better signal.`,
+        );
+      } else if (accuracyTier === 'warning') {
+        Alert.alert(
+          'GPS Accuracy Warning',
+          `Current GPS accuracy is ±${gps.accuracy?.toFixed(0) || '?'}m (20-50m). The proof will be flagged with reduced accuracy.`,
+        );
+      }
+
+      // Step 3: Same-Location Block — prevent capturing at identical coordinates
+      const isSameLocation = checkSameLocationBlock(gps.latitude, gps.longitude);
+      if (isSameLocation) {
+        Alert.alert(
+          'Same Location Detected',
+          'A proof has already been captured at this location. Please move to a different position (at least 5 meters away) before capturing another proof.',
+        );
+        return; // BLOCK capture
+      }
+
+      // Step 4: Capture Photo
       const photoFile = await photoOutput.capturePhotoToFile({
         flashMode: 'off',
       }, {});
@@ -106,6 +131,10 @@ export default function CameraScreen() {
       // Generate a Unique Proof ID
       const proofId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const timestamp = new Date().toISOString();
+      const captureTimestamp = Date.now();
+
+      // Step 5: Duplicate Proof Detection (Rule 11) — same device + <5m + <1min
+      const isDuplicate = await checkDuplicateCoordinates(gps.latitude, gps.longitude, captureTimestamp);
       
       // Reverse geocode
       let placeName = `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`;
@@ -133,6 +162,10 @@ export default function CameraScreen() {
       
       const plusCodePreview = encodePlusCode(gps.latitude, gps.longitude);
       
+      const actualWidth = photoFile.width;
+      const actualHeight = photoFile.height;
+      const aspectRatio = actualHeight > actualWidth ? actualWidth / actualHeight : actualHeight / actualWidth;
+
       setWatermarkData({
          placeName,
          fullAddress: fullAddress ? `${plusCodePreview}, ${fullAddress}` : plusCodePreview,
@@ -140,6 +173,7 @@ export default function CameraScreen() {
          latitude: gps.latitude,
          longitude: gps.longitude,
          timestamp: formatTimestamp(new Date()),
+         aspectRatio,
       });
       setCapturedPhotoUri(`file://${photoFile.filePath}`);
       
@@ -168,7 +202,7 @@ export default function CameraScreen() {
         id: proofId,
         localUri: watermarkedPath,
         status: 'pending',
-        createdAt: Date.now(),
+        createdAt: captureTimestamp,
         metadata: {
           proofId,
           timestamp,
@@ -176,9 +210,11 @@ export default function CameraScreen() {
           longitude: gps.longitude,
           altitude: gps.altitude,
           accuracy: gps.accuracy,
+          accuracyTier,
           mocked: gps.mocked,
           imageHash: '', // Hash will be computed in background
           isRooted: sec.isRooted,
+          duplicateProof: isDuplicate,
           deviceName: sec.deviceName,
           deviceModel: sec.deviceModel,
           osVersion: sec.osVersion,
@@ -280,6 +316,7 @@ export default function CameraScreen() {
               latitude={watermarkData.latitude}
               longitude={watermarkData.longitude}
               timestamp={watermarkData.timestamp}
+              aspectRatio={watermarkData.aspectRatio}
             />
           </ViewShot>
         </View>
@@ -328,13 +365,39 @@ export default function CameraScreen() {
                 ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
                 : 'Acquiring GPS...'}
             </Text>
+            <TouchableOpacity 
+              onPress={fetchLocation} 
+              style={styles.refreshButton}
+              disabled={locationLoading}
+            >
+              {locationLoading ? (
+                <ActivityIndicator size={12} color="#38BDF8" />
+              ) : (
+                <Ionicons name="refresh" size={14} color="#38BDF8" />
+              )}
+            </TouchableOpacity>
           </View>
 
           <View style={styles.telemetryItem}>
-            <Ionicons name="compass" size={14} color={location?.accuracy && location.accuracy < 20 ? '#34D399' : '#FBBF24'} />
+            <Ionicons name="compass" size={14} color={
+              location?.accuracy 
+                ? (location.accuracy <= 20 ? '#34D399' : location.accuracy <= 50 ? '#FBBF24' : '#EF4444') 
+                : '#94A3B8'
+            } />
             <Text style={styles.telemetryValue}>
               {location?.accuracy ? `±${location.accuracy.toFixed(1)}m` : '--'}
             </Text>
+            {location?.accuracy && (
+              <View style={[
+                styles.accuracyBadge,
+                location.accuracy <= 20 ? styles.accuracyGood :
+                location.accuracy <= 50 ? styles.accuracyWarn : styles.accuracyPoor
+              ]}>
+                <Text style={styles.accuracyBadgeText}>
+                  {location.accuracy <= 20 ? 'GOOD' : location.accuracy <= 50 ? 'WARN' : 'POOR'}
+                </Text>
+              </View>
+            )}
           </View>
 
           {securityData?.isRooted && (
@@ -546,6 +609,15 @@ const styles = StyleSheet.create({
     marginRight: 10,
     marginVertical: 4,
   },
+  refreshButton: {
+    marginLeft: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   telemetryValue: {
     fontSize: 12,
     color: '#F8FAFC',
@@ -557,6 +629,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+  },
+  accuracyBadge: {
+    marginLeft: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  accuracyGood: {
+    backgroundColor: 'rgba(52, 211, 153, 0.25)',
+  },
+  accuracyWarn: {
+    backgroundColor: 'rgba(251, 191, 36, 0.25)',
+  },
+  accuracyPoor: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  accuracyBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    letterSpacing: 0.5,
   },
   controlsContainer: {
     position: 'absolute',

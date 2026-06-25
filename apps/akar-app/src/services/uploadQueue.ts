@@ -43,11 +43,14 @@ export const processUploadQueue = async () => {
       latitude: pendingItem.metadata.latitude,
       longitude: pendingItem.metadata.longitude,
       accuracy: pendingItem.metadata.accuracy || 0,
+      accuracy_tier: pendingItem.metadata.accuracyTier || 'good',
       hash: fileHash,
       device_id: 'unknown-device-id', // Not tracked in the old metadata
       device_model: pendingItem.metadata.deviceModel,
       app_version: '1.0.0', // Not tracked in the old metadata
       mock_location: pendingItem.metadata.mocked,
+      is_rooted: pendingItem.metadata.isRooted || false,
+      duplicate_proof: pendingItem.metadata.duplicateProof || false,
       city: pendingItem.metadata.city,
       state: pendingItem.metadata.state,
       country: pendingItem.metadata.country,

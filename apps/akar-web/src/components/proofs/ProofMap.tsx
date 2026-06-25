@@ -56,7 +56,7 @@ export default function ProofMap({ latitude, longitude }: ProofMapProps) {
   return (
     <div 
       ref={mapContainerRef} 
-      className="w-full h-full min-h-[300px] rounded-2xl overflow-hidden border border-slate-800 bg-slate-950"
+      className="w-full h-full min-h-[300px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950"
     />
   );
 }
