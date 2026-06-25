@@ -55,6 +55,7 @@ export default function LeafletMapCapture({
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       {!captured && (
+        // @ts-ignore
         <WebView
           ref={webViewRef}
           source={{ html: htmlContent }}

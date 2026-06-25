@@ -24,6 +24,9 @@ import WatermarkOverlay from '@/src/components/WatermarkOverlay';
 import { encodePlusCode } from '@/src/utils/plusCode';
 import * as Location from 'expo-location';
 import { formatTimestamp } from '@/src/utils/formatTimestamp';
+import { useRouter } from 'expo-router';
+import { useUploadStore } from '@/src/store/useUploadStore';
+import { processUploadQueue } from '@/src/services/uploadQueue';
 
 export default function CameraScreen() {
   const cameraRef = useRef<CameraRef>(null);
@@ -39,19 +42,15 @@ export default function CameraScreen() {
     fetchLocation,
   } = useLocation();
 
+  const router = useRouter();
   const [permissionCheckComplete, setPermissionCheckComplete] = useState<boolean>(false);
   
-  // Pipeline/Upload status
-  const [pipelineStep, setPipelineStep] = useState<string>('');
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [completedProof, setCompletedProof] = useState<{
-    proofId: string;
-    path: string;
-    hash: string;
-  } | null>(null);
+  // Zustand queue
+  const uploads = useUploadStore((state) => state.items);
+  const uploadingCount = uploads.filter(i => i.status === 'uploading' || i.status === 'pending').length;
 
   // ViewShot and mapping state
-  const viewShotRef = useRef<ViewShot>(null);
+  const viewShotRef = useRef<any>(null);
   const [mapBase64, setMapBase64] = useState<string | null>(null);
   const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
   const [watermarkData, setWatermarkData] = useState<any>(null);
@@ -92,24 +91,14 @@ export default function CameraScreen() {
       return;
     }
 
-    setIsProcessing(true);
-    setCompletedProof(null);
-
     try {
-      // Step 1: Capture Location
-      setPipelineStep('Acquiring high-accuracy GPS fix...');
+      // Step 1: Capture Location (fast)
       const gps = await fetchLocation();
       if (!gps) {
         throw new Error('Failed to acquire location. Ensure location services are enabled.');
       }
 
-      if (gps.accuracy && gps.accuracy > 30) {
-        // High uncertainty warning, but proceed
-        console.warn('Low GPS accuracy:', gps.accuracy);
-      }
-
       // Step 2: Capture Photo
-      setPipelineStep('Capturing raw photo...');
       const photoFile = await photoOutput.capturePhotoToFile({
         flashMode: 'off',
       }, {});
@@ -117,13 +106,14 @@ export default function CameraScreen() {
       // Generate a Unique Proof ID
       const proofId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const timestamp = new Date().toISOString();
-
-      // Step 3: Burn Watermark using ViewShot
-      setPipelineStep('Embedding encrypted watermark...');
       
       // Reverse geocode
       let placeName = `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`;
       let fullAddress = '';
+      let gcCity = '';
+      let gcState = '';
+      let gcCountry = '';
+
       try {
         const geocode = await Location.reverseGeocodeAsync({
           latitude: gps.latitude,
@@ -131,12 +121,11 @@ export default function CameraScreen() {
         });
         if (geocode && geocode.length > 0) {
           const geo = geocode[0];
-          const city = geo.city || geo.subregion || '';
-          const region = geo.region || '';
-          const country = geo.country || '';
-          placeName = [city, region, country].filter(Boolean).join(', ');
-          const postalCode = geo.postalCode || '';
-          fullAddress = [city, `${region} ${postalCode}`.trim(), country].filter(Boolean).join(', ');
+          gcCity = geo.city || geo.subregion || '';
+          gcState = geo.region || '';
+          gcCountry = geo.country || '';
+          placeName = [gcCity, gcState, gcCountry].filter(Boolean).join(', ');
+          fullAddress = [gcCity, `${gcState} ${geo.postalCode || ''}`.trim(), gcCountry].filter(Boolean).join(', ');
         }
       } catch (geoError) {
         console.warn('Reverse geocoding failed:', geoError);
@@ -155,7 +144,7 @@ export default function CameraScreen() {
       setCapturedPhotoUri(`file://${photoFile.filePath}`);
       
       // Wait a moment for React to mount the WatermarkOverlay and lay it out
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 800));
       
       if (!viewShotRef.current?.capture) {
         throw new Error('ViewShot ref is not ready');
@@ -167,24 +156,7 @@ export default function CameraScreen() {
       // Reset state so it unmounts
       setCapturedPhotoUri(null);
 
-      // Step 4: Nitro Compression & Resizing
-      setPipelineStep('Compressing & optimizing proof image...');
-      const nitroImage = await loadImage({ filePath: watermarkedPath });
-      
-      // Resize to standard Full HD for lightweight web viewing while preserving clarity
-      const resizedImage = await nitroImage.resizeAsync(1920, 1440);
-      
-      // Save locally to a temporary file
-      const finalLocalPath = await resizedImage.saveToTemporaryFileAsync('jpg', 80);
-
-      // Step 5: Secure SHA256 Hashing
-      setPipelineStep('Generating cryptographic checksum...');
-      // Get array buffer of final compressed file
-      const encodedData = await resizedImage.toEncodedImageDataAsync('jpg', 80);
-      const fileHash = await computeSHA256(encodedData.buffer);
-
-      // Step 6: Server Upload
-      setPipelineStep('Uploading proof to Cloudflare R2...');
+      // Queue the background upload
       const sec = securityData || {
         isRooted: false,
         deviceName: 'Unknown',
@@ -192,9 +164,12 @@ export default function CameraScreen() {
         osVersion: 'Unknown',
       };
 
-      await uploadProof(
-        `file://${finalLocalPath}`,
-        {
+      useUploadStore.getState().addUpload({
+        id: proofId,
+        localUri: watermarkedPath,
+        status: 'pending',
+        createdAt: Date.now(),
+        metadata: {
           proofId,
           timestamp,
           latitude: gps.latitude,
@@ -202,45 +177,23 @@ export default function CameraScreen() {
           altitude: gps.altitude,
           accuracy: gps.accuracy,
           mocked: gps.mocked,
-          imageHash: fileHash,
+          imageHash: '', // Hash will be computed in background
           isRooted: sec.isRooted,
           deviceName: sec.deviceName,
           deviceModel: sec.deviceModel,
           osVersion: sec.osVersion,
-        },
-        backendUrl
-      );
-
-      setCompletedProof({
-        proofId,
-        path: `file://${finalLocalPath}`,
-        hash: fileHash,
+          city: gcCity,
+          state: gcState,
+          country: gcCountry,
+        }
       });
-      setPipelineStep('Success! Proof registered successfully.');
+
+      // Fire and forget background worker
+      processUploadQueue();
+
     } catch (err: any) {
       console.error(err);
-      Alert.alert('Capture Pipeline Failed', err.message || 'An unexpected error occurred.');
-      setIsProcessing(false);
-    }
-  };
-
-  const handleShareWhatsApp = async () => {
-    if (!completedProof) return;
-
-    try {
-      const isSharingAvailable = await Sharing.isAvailableAsync();
-      if (!isSharingAvailable) {
-        Alert.alert('Error', 'Sharing is not supported on this device.');
-        return;
-      }
-
-      await Sharing.shareAsync(completedProof.path, {
-        mimeType: 'image/jpeg',
-        dialogTitle: `Share Field Proof ${completedProof.proofId}`,
-        UTI: 'public.jpeg',
-      });
-    } catch (error) {
-      console.error('Sharing failed:', error);
+      Alert.alert('Capture Failed', err.message || 'An unexpected error occurred.');
     }
   };
 
@@ -308,6 +261,7 @@ export default function CameraScreen() {
           <LeafletMapCapture
             latitude={location.latitude}
             longitude={location.longitude}
+            zoom={18}
             onMapCaptured={setMapBase64}
           />
         </View>
@@ -337,8 +291,29 @@ export default function CameraScreen() {
         style={StyleSheet.absoluteFillObject}
         device={device}
         outputs={[photoOutput]}
-        isActive={!isProcessing && !completedProof}
+        isActive={true}
       />
+
+      {/* Top Bar Overlay */}
+      <View style={styles.topBarContainer}>
+        {/* Uploading Status */}
+        {uploadingCount > 0 ? (
+          <View style={styles.uploadingBadge}>
+            <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.uploadingText}>Uploading {uploadingCount} image{uploadingCount > 1 ? 's' : ''}</Text>
+          </View>
+        ) : <View />}
+
+        {/* History Button */}
+        <TouchableOpacity style={styles.historyButton} onPress={() => router.push('/history' as any)}>
+          <Ionicons name="images" size={24} color="#FFFFFF" />
+          {uploads.length > 0 && uploadingCount === 0 && (
+            <View style={styles.historyBadge}>
+              <Text style={styles.historyBadgeText}>{uploads.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {/* Floating Header (Telemetry Panel) */}
       <View style={styles.telemetryOverlay}>
@@ -385,52 +360,6 @@ export default function CameraScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Processing Status Modal */}
-      <Modal transparent visible={isProcessing} animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.processingCard}>
-            {completedProof ? (
-              <>
-                <View style={[styles.statusIconCircle, { backgroundColor: '#10B981' }]}>
-                  <Ionicons name="checkmark" size={38} color="#FFFFFF" />
-                </View>
-                <Text style={styles.processingTitle}>Upload Complete!</Text>
-                <Text style={styles.processingSubtitle}>
-                  Proof ID: {completedProof.proofId}
-                </Text>
-                
-                <View style={styles.hashContainer}>
-                  <Text style={styles.hashLabel}>SHA256 Checksum:</Text>
-                  <Text style={styles.hashValue} numberOfLines={1} ellipsizeMode="middle">
-                    {completedProof.hash}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: '#25D366', marginTop: 20 }]}
-                  onPress={handleShareWhatsApp}
-                >
-                  <Ionicons name="logo-whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.primaryButtonText}>Share to WhatsApp</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={() => setIsProcessing(false)}
-                >
-                  <Text style={styles.secondaryButtonText}>Done</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <ActivityIndicator size="large" color="#0EA5E9" style={{ marginBottom: 20 }} />
-                <Text style={styles.processingTitle}>Registering Proof</Text>
-                <Text style={styles.processingStepText}>{pipelineStep}</Text>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -544,9 +473,59 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#EF4444',
   },
+  // Top Bar Layout
+  topBarContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  uploadingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  uploadingText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  historyButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  historyBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#0EA5E9',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  historyBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   telemetryOverlay: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 30,
+    top: Platform.OS === 'ios' ? 105 : 75,
     left: 20,
     right: 20,
   },
@@ -602,65 +581,5 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 34,
     backgroundColor: '#FFFFFF',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-  },
-  processingCard: {
-    width: '85%',
-    padding: 28,
-    borderRadius: 24,
-    backgroundColor: '#1E293B',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  statusIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  processingTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 8,
-  },
-  processingSubtitle: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  processingStepText: {
-    fontSize: 14,
-    color: '#E2E8F0',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  hashContainer: {
-    backgroundColor: '#0F172A',
-    padding: 12,
-    borderRadius: 10,
-    width: '100%',
-    marginVertical: 10,
-    alignItems: 'center',
-  },
-  hashLabel: {
-    fontSize: 11,
-    color: '#64748B',
-    marginBottom: 4,
-    fontWeight: '600',
-  },
-  hashValue: {
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: '#38BDF8',
   },
 });

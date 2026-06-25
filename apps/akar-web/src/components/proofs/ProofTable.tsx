@@ -46,10 +46,15 @@ export default function ProofTable() {
   }
 
 
-  // Filter proofs by Proof ID locally on the client
-  const filteredProofs = proofs.filter((proof) =>
-    proof.proofId.toLowerCase().includes(searchQuery.toLowerCase().trim())
-  );
+  // Filter proofs by city/state locally on the client
+  const filteredProofs = proofs.filter((proof) => {
+    const query = searchQuery.toLowerCase().trim();
+    return (
+      proof.city?.toLowerCase().includes(query) ||
+      proof.state?.toLowerCase().includes(query) ||
+      proof.country?.toLowerCase().includes(query)
+    );
+  });
 
   const PAGE_SIZE = 20;
   const totalPages = Math.ceil(filteredProofs.length / PAGE_SIZE);
@@ -81,7 +86,7 @@ export default function ProofTable() {
           </span>
           <input
             type="text"
-            placeholder="Search by Proof ID..."
+            placeholder="Search by city or state..."
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-700 transition-colors"
@@ -94,7 +99,7 @@ export default function ProofTable() {
           <Search className="w-8 h-8 text-slate-650 mb-3" />
           <h4 className="text-xs font-bold text-slate-400">No matching records found</h4>
           <p className="text-[10px] text-slate-500 mt-1">
-            No proofs match your ID search query: &quot;{searchQuery}&quot;.
+            No proofs match your location search query: &quot;{searchQuery}&quot;.
           </p>
         </div>
       ) : (
@@ -103,11 +108,11 @@ export default function ProofTable() {
             <thead>
               <tr className="border-b border-slate-800/80 text-slate-500 font-bold uppercase tracking-wider text-[10px] bg-slate-950/20">
                 <th className="py-4 px-6">Thumbnail</th>
-                <th className="py-4 px-6">Proof ID</th>
+                <th className="py-4 px-6">City</th>
+                <th className="py-4 px-6">State</th>
                 <th className="py-4 px-6">Captured Time</th>
                 <th className="py-4 px-6">Latitude</th>
                 <th className="py-4 px-6">Longitude</th>
-                <th className="py-4 px-6">Accuracy</th>
                 <th className="py-4 px-6">Status</th>
               </tr>
             </thead>
@@ -140,9 +145,14 @@ export default function ProofTable() {
                       )}
                     </td>
 
-                    {/* Proof ID */}
-                    <td className="py-3.5 px-6 font-mono text-[11px] text-slate-300 font-semibold">
-                      {proof.proofId}
+                    {/* City */}
+                    <td className="py-3.5 px-6 text-slate-300 font-semibold text-[11px]">
+                      {proof.city || '—'}
+                    </td>
+
+                    {/* State */}
+                    <td className="py-3.5 px-6 text-slate-400 text-[11px]">
+                      {proof.state || '—'}
                     </td>
 
                     {/* Captured Time */}
@@ -158,11 +168,6 @@ export default function ProofTable() {
                     {/* Longitude */}
                     <td className="py-3.5 px-6 font-mono text-[11px] text-slate-400">
                       {proof.longitude !== undefined ? proof.longitude.toFixed(6) : '0.000000'}
-                    </td>
-
-                    {/* Accuracy */}
-                    <td className="py-3.5 px-6 text-slate-400 font-medium">
-                      {proof.accuracy !== undefined ? `±${Math.round(proof.accuracy)}m` : 'N/A'}
                     </td>
 
                     {/* Status */}

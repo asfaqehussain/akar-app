@@ -33,6 +33,9 @@ export const proofService = {
           device_model: proof.deviceModel,
           app_version: proof.appVersion,
           mock_location: proof.mockLocation,
+          city: proof.city,
+          state: proof.state,
+          country: proof.country,
         });
 
       if (error) {

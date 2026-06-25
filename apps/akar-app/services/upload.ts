@@ -1,5 +1,7 @@
+import { Platform } from 'react-native';
+
 // Default endpoint configuration (can be updated with your deployed worker URL)
-export const DEFAULT_BACKEND_URL = 'http://localhost:8787';
+export const DEFAULT_BACKEND_URL = Platform.OS === 'android' ? 'http://10.0.2.2:8787' : 'http://localhost:8787';
 
 export interface ProofMetadata {
   proofId: string;
@@ -14,6 +16,9 @@ export interface ProofMetadata {
   deviceName: string;
   deviceModel: string;
   osVersion: string;
+  city: string;
+  state: string;
+  country: string;
 }
 
 /**

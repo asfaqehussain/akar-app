@@ -78,6 +78,9 @@ export default {
             osVersion: fields.osVersion?.stringValue || '',
             imageUrl: fields.imageUrl?.stringValue || '',
             createdAt: fields.createdAt?.stringValue || '',
+            city: fields.city?.stringValue || '',
+            state: fields.state?.stringValue || '',
+            country: fields.country?.stringValue || '',
           };
         });
 
@@ -142,6 +145,9 @@ export default {
             deviceModel: { stringValue: metadata.deviceModel || 'Unknown Device' },
             osVersion: { stringValue: metadata.osVersion || 'Unknown' },
             imageUrl: { stringValue: imageUrl },
+            city: { stringValue: metadata.city || '' },
+            state: { stringValue: metadata.state || '' },
+            country: { stringValue: metadata.country || '' },
             createdAt: { stringValue: new Date().toISOString() },
           },
         };

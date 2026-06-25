@@ -14,6 +14,9 @@ export interface UploadProofParams {
   accuracy: number;
   capturedAt: string;
   hash: string;
+  city?: string;
+  state?: string;
+  country?: string;
 }
 
 export const useUploadProof = () => {
@@ -56,7 +59,10 @@ export const useUploadProof = () => {
         deviceId,
         deviceModel: `${brand} ${model}`,
         appVersion,
-        mockLocation: isEmulator, // Treat emulator run as mock/demo location status
+        mockLocation: isEmulator,
+        city: params.city || '',
+        state: params.state || '',
+        country: params.country || '',
       };
 
       await proofService.saveProof(params.proofId, proofDoc);

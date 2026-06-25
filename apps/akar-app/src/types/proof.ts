@@ -12,4 +12,7 @@ export interface Proof {
   deviceModel: string;
   appVersion: string;
   mockLocation: boolean;
+  city: string;
+  state: string;
+  country: string;
 }

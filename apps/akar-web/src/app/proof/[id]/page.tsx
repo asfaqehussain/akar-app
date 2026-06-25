@@ -5,7 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useProof } from '../../../hooks/useProof';
 import DashboardLayout from '../../../components/Layout/DashboardLayout';
-import { ShieldAlert, ShieldCheck, ArrowLeft, Calendar, MapPin, Compass, Cpu, Fingerprint } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, ArrowLeft, Calendar, MapPin, Compass, Cpu, Fingerprint, Map } from 'lucide-react';
 
 const ProofMap = dynamic(() => import('../../../components/proofs/ProofMap'), { ssr: false });
 
@@ -141,12 +141,12 @@ export default function ProofDetailPage({ params }: PageProps) {
 
                   <div className="flex gap-4 items-start">
                     <div className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
-                      <Compass className="w-4 h-4 text-slate-400" />
+                      <Map className="w-4 h-4 text-slate-400" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Accuracy</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Location</p>
                       <p className="text-sm font-semibold text-slate-200 mt-0.5">
-                        ±{Math.round(proof.accuracy)} meters
+                        {[proof.city, proof.state, proof.country].filter(Boolean).join(', ') || 'Unknown location'}
                       </p>
                     </div>
                   </div>

@@ -1,7 +1,13 @@
 import React from 'react';
-import RootNavigator from '../src/navigation/RootNavigator';
+import { Stack } from 'expo-router';
 
 export default function RootLayout() {
-  return <RootNavigator />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="history" options={{ headerShown: false }} />
+      <Stack.Screen name="details" options={{ headerShown: false }} />
+    </Stack>
+  );
 }
 

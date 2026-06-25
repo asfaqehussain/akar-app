@@ -15,6 +15,9 @@ interface SupabaseProofRow {
   device_model: string;
   app_version: string;
   mock_location: boolean;
+  city: string;
+  state: string;
+  country: string;
 }
 
 function mapRowToProof(row: SupabaseProofRow): Proof {
@@ -36,6 +39,9 @@ function mapRowToProof(row: SupabaseProofRow): Proof {
     deviceModel: row.device_model || '',
     appVersion: row.app_version || '',
     mockLocation: !!row.mock_location,
+    city: row.city || '',
+    state: row.state || '',
+    country: row.country || '',
   };
 }
 
